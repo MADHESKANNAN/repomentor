@@ -1,7 +1,21 @@
 import { useState } from "react";
 import "./App.css";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 const API = "http://localhost:8000";
+
+function langFor(path) {
+  const ext = path.split(".").pop().toLowerCase();
+  const map = {
+    py: "python", js: "javascript", jsx: "jsx", ts: "typescript",
+    tsx: "tsx", json: "json", md: "markdown", html: "html",
+    css: "css", c: "c", h: "c", cpp: "cpp", java: "java",
+    go: "go", rs: "rust", rb: "ruby", sh: "bash", yml: "yaml",
+    yaml: "yaml", toml: "toml", rst: "markup", pyi: "python",
+  };
+  return map[ext] || "text";
+}
 
 export default function App() {
   const [repoUrl, setRepoUrl] = useState("");
@@ -104,7 +118,20 @@ export default function App() {
                             {s.file_path}:{s.start_line}-{s.end_line}
                           </button>
                           {openSource === key && (
-                            <pre className="snippet">{s.snippet}</pre>
+                            <SyntaxHighlighter
+                              language={langFor(s.file_path)}
+                              style={vscDarkPlus}
+                              showLineNumbers
+                              startingLineNumber={s.start_line}
+                              customStyle={{
+                                margin: 0,
+                                borderRadius: 6,
+                                fontSize: 12,
+                                maxHeight: 300,
+                              }}
+                            >
+                              {s.snippet}
+                            </SyntaxHighlighter>
                           )}
                         </div>
                       );
