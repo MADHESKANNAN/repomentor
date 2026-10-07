@@ -1,4 +1,4 @@
-"""RepoMentor - Week 2 Day 2: answer a question using retrieved code chunks."""
+"""RepoMentor - Week 2 Day 3: answer a question + return sources."""
 import os
 import time
 from pathlib import Path
@@ -32,16 +32,18 @@ QUESTION: {question}
 ANSWER:"""
 
 
-def answer(repo_url: str, question: str, k: int = 5) -> str:
+def answer(repo_url: str, question: str, k: int = 5) -> dict:
     chunks = retrieve(repo_url, question, k=k)
     context = format_context(chunks)
     prompt = PROMPT.format(context=context, question=question)
 
+    text = None
     last_error = None
     for attempt in range(5):
         try:
             resp = _client.models.generate_content(model=MODEL, contents=prompt)
-            return resp.text
+            text = resp.text
+            break
         except Exception as e:
             last_error = e
             msg = str(e)
@@ -51,4 +53,21 @@ def answer(repo_url: str, question: str, k: int = 5) -> str:
                 time.sleep(wait)
             else:
                 raise
-    raise last_error
+    if text is None:
+        raise last_error
+
+    # If the model says it does not know, do not show sources
+    if text.strip().startswith("Theriyala"):
+        sources = []
+    else:
+        sources = [
+            {
+                "file_path": c["file_path"],
+                "start_line": c["start_line"],
+                "end_line": c["end_line"],
+                "snippet": c["text"],
+            }
+            for c in chunks
+        ]
+
+    return {"answer": text, "sources": sources}
