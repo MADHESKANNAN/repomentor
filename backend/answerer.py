@@ -1,4 +1,4 @@
-"""RepoMentor - Week 2 Day 3: answer a question + return sources."""
+"""RepoMentor - Week 3 Day 2: answer a question using hybrid search + return sources."""
 import os
 import time
 from pathlib import Path
@@ -6,7 +6,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 
-from retriever import retrieve, format_context
+from retriever import format_context
+from hybrid import hybrid_search
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -33,7 +34,7 @@ ANSWER:"""
 
 
 def answer(repo_url: str, question: str, k: int = 5) -> dict:
-    chunks = retrieve(repo_url, question, k=k)
+    chunks = hybrid_search(repo_url, question, k=k)
     context = format_context(chunks)
     prompt = PROMPT.format(context=context, question=question)
 

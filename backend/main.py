@@ -1,4 +1,4 @@
-"""RepoMentor API - Week 2 Day 4: /ingest and /ask."""
+"""RepoMentor API - /ingest and /ask (hybrid search)."""
 import time
 
 from fastapi import FastAPI, HTTPException
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from repo_loader import clone_repo
 from chunker import chunk_repo
 from embed_store import collection_name_for, store_chunks, _client
+from keyword_search import clear_cache
 from answerer import answer
 
 app = FastAPI(title="RepoMentor API")
@@ -46,6 +47,7 @@ def ingest(req: IngestRequest):
         if not chunks:
             raise HTTPException(status_code=422, detail="No code files found in this repo")
         stored = store_chunks(chunks, collection_name_for(url))
+        clear_cache(url)  # rebuild BM25 index with the new chunks
         return {"repo_url": url, "chunks_stored": stored, "seconds": round(time.time() - t, 1)}
     except HTTPException:
         raise
