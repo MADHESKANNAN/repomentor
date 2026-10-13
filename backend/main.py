@@ -1,15 +1,17 @@
-"""RepoMentor API - /ingest and /ask (hybrid search)."""
+"""RepoMentor API - /ingest, /ask, /ask/stream (hybrid search)."""
+import json
 import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from repo_loader import clone_repo
 from chunker import chunk_repo
 from embed_store import collection_name_for, store_chunks, _client
 from keyword_search import clear_cache
-from answerer import answer
+from answerer import answer, answer_stream
 
 app = FastAPI(title="RepoMentor API")
 
@@ -28,6 +30,13 @@ class IngestRequest(BaseModel):
 class AskRequest(BaseModel):
     repo_url: str
     question: str
+
+
+def _check_indexed(url: str):
+    name = collection_name_for(url)
+    existing = [c if isinstance(c, str) else c.name for c in _client.list_collections()]
+    if name not in existing:
+        raise HTTPException(status_code=404, detail="This repo is not indexed yet. Call /ingest first.")
 
 
 @app.get("/")
@@ -60,13 +69,25 @@ def ask(req: AskRequest):
     url = req.repo_url.strip()
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question is empty")
-
-    name = collection_name_for(url)
-    existing = [c if isinstance(c, str) else c.name for c in _client.list_collections()]
-    if name not in existing:
-        raise HTTPException(status_code=404, detail="This repo is not indexed yet. Call /ingest first.")
-
+    _check_indexed(url)
     try:
         return answer(url, req.question)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Answer failed: {e}")
+
+
+@app.post("/ask/stream")
+def ask_stream(req: AskRequest):
+    url = req.repo_url.strip()
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Question is empty")
+    _check_indexed(url)
+
+    def event_gen():
+        try:
+            for event, data in answer_stream(url, req.question):
+                yield f"data: {json.dumps({'type': event, 'data': data})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")

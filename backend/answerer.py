@@ -1,4 +1,4 @@
-"""RepoMentor - Week 3 Day 2: answer a question using hybrid search + return sources."""
+"""RepoMentor - Week 3 Day 3: answer (normal + streaming) using hybrid search."""
 import os
 import time
 from pathlib import Path
@@ -33,6 +33,18 @@ QUESTION: {question}
 ANSWER:"""
 
 
+def _to_sources(chunks):
+    return [
+        {
+            "file_path": c["file_path"],
+            "start_line": c["start_line"],
+            "end_line": c["end_line"],
+            "snippet": c["text"],
+        }
+        for c in chunks
+    ]
+
+
 def answer(repo_url: str, question: str, k: int = 5) -> dict:
     chunks = hybrid_search(repo_url, question, k=k)
     context = format_context(chunks)
@@ -49,7 +61,7 @@ def answer(repo_url: str, question: str, k: int = 5) -> dict:
             last_error = e
             msg = str(e)
             if "503" in msg or "429" in msg or "UNAVAILABLE" in msg:
-                wait = 10 * (attempt + 1)  # 10, 20, 30, 40, 50 sec
+                wait = 10 * (attempt + 1)
                 print(f"  (Gemini busy, retry {attempt + 1}/5 in {wait}s...)")
                 time.sleep(wait)
             else:
@@ -61,14 +73,34 @@ def answer(repo_url: str, question: str, k: int = 5) -> dict:
     if text.strip().startswith("Theriyala"):
         sources = []
     else:
-        sources = [
-            {
-                "file_path": c["file_path"],
-                "start_line": c["start_line"],
-                "end_line": c["end_line"],
-                "snippet": c["text"],
-            }
-            for c in chunks
-        ]
+        sources = _to_sources(chunks)
 
     return {"answer": text, "sources": sources}
+
+
+def answer_stream(repo_url: str, question: str, k: int = 5):
+    """Yield (event, data) tuples: sources, then token chunks, then done."""
+    chunks = hybrid_search(repo_url, question, k=k)
+    context = format_context(chunks)
+    prompt = PROMPT.format(context=context, question=question)
+
+    yield "sources", _to_sources(chunks)
+
+    for attempt in range(5):
+        started = False
+        try:
+            for part in _client.models.generate_content_stream(model=MODEL, contents=prompt):
+                if part.text:
+                    started = True
+                    yield "token", part.text
+            yield "done", ""
+            return
+        except Exception as e:
+            msg = str(e)
+            busy = "503" in msg or "429" in msg or "UNAVAILABLE" in msg
+            if busy and not started:
+                time.sleep(5 * (attempt + 1))
+                continue
+            yield "error", msg
+            return
+    yield "error", "Gemini is busy, please try again in a minute"
